@@ -1,0 +1,18 @@
+OASISFormat: 0.4
+Name:   ppxSpec     
+Version :   0.01
+Synopsis:    ACH
+Authors:    ACH
+License:     LGPL
+Plugins:     META (0.4), DevFiles (0.4)
+BuildTools:  ocamlbuild
+
+
+Executable ppxSpec 
+ Path: ./
+ BuildDepends:
+  compiler-libs.common,
+  ppx_tools.metaquot
+ MainIs:         ppxSpec.ml
+ CompiledObject: best
+
