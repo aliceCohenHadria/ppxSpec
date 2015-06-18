@@ -1,4 +1,3 @@
-(** coucou *)
 
 open Ast_mapper                                                            
 open Ast_helper                                                                                      
