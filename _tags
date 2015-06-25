@@ -1,1 +1,1 @@
-<*>: package(ppx_tools.metaquot,compiler-libs.common)
+<*>: package(ppx_tools.metaquot,compiler-libs.common,arbolib)
