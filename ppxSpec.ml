@@ -17,42 +17,67 @@ let getNb payload =
     end 
   |_ -> raise Not_found
 
-let f aa = 
+let f args desc = 
  let seq  = ref false and nbSeq = ref 0 and taille = ref (-1) in
- let rec makeTaille a = 
-   print_string "MakeTaille\n";
+ let rec makeTaille a =
    match a with
-    [] -> ()
+    [] -> (!taille, !seq, !nbSeq)
     |(a,b)::q -> if String.contains (a.txt) 'z' then 
-               if String.length (a.txt) > 1 then
                begin
-                taille :=int_of_char (String.get (a.txt) 1) - 48;
-                makeTaille q;
-               end 
-               else 
-                begin taille := 1; 
+                if String.length (a.txt) > 1 then
+                  taille :=int_of_char (String.get (a.txt) 1) - 48
+                else 
+                  taille := 1; 
+                makeTaille q
                 end
             else
             begin
              if (a.txt)="seq" then 
              begin 
               seq := true; 
-              try 
-               nbSeq := getNb b 
-              with Not_found -> ()
+              nbSeq := getNb b 
              end;
               makeTaille q
             end
  in
-  makeTaille aa
+  makeTaille args
+   
+let rec handle_tuple tu =
+ match tu with
+  [] -> []
+  |h::q -> begin match h.ptyp_desc with 
+                  |Ptyp_constr (a,b) ->  let longident = a.txt in
+                  begin match longident with
+                        |Lident name -> 
+                         Printf.printf "%s\n" name; (Grammar.Elem name)::(handle_tuple q) 
+                        | _ -> raise Not_found
+                  end 
+                  |_ -> handle_tuple q 
+           end
 
-let makeRuleCons e = 
+let makeRule e = 
+Printf.printf "nom %s    " e.pcd_name.txt;
  let args = e.pcd_args in
-  List.iter (fun e -> f  e.ptyp_attributes) args 
+ Printf.printf "taille : %d     " (List.length args);
+  let l = List.map (fun e -> f  e.ptyp_attributes e.ptyp_desc) args in
+   List.iter (fun (a,b,c) -> Printf.printf "taille : %d, seq : %d\n" a c) l;
+   let (a,b,c) as elt = List.hd l and arg = List.hd args in
+   let grammar_element = 
+    match arg.ptyp_desc with
+     Ptyp_var n -> [] 
+     |Ptyp_tuple tu -> Printf.printf "ici\n"; handle_tuple tu  
+     in
+   (* if b then 
+      if b>0 then
+        makeSeqSup e elt 
+      else 
+        (e.ptyp_name.txt, Cons (a,[Seq '']))  *)
+   (e.pcd_name.txt,[Grammar.Cons (a,grammar_element)])
+   
 
-let makeRule kind = 
+let makeGrammar kind name = 
  match kind with
-  |Ptype_variant l -> List.iter (makeRuleCons) l  
+  |Ptype_variant l -> let g = (name, List.map (fun e-> Grammar.Call e.pcd_name.txt) l)::(List.map (makeRule) l ) in let s = Grammar.string_of_grammar g in Printf.printf "Grammaire : \n %s \n" s 
   | _ -> raise Not_found
 
 
@@ -83,8 +108,8 @@ let makeSpec argv =
        match li with 
        |[] -> type_desc
        |h::q -> if List.exists (fun (e,f) -> e.txt="spec") (h.ptype_attributes) then 
-                 begin Printf.printf "ici\n"; 
-                       makeRule h.ptype_kind; type_desc 
+                 begin 
+                  List.map (fun e -> makeGrammar e.ptype_kind e.ptype_name.txt) li; type_desc 
                  end
                 else 
                  findSpec q
