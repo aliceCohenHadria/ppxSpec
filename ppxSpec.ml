@@ -11,11 +11,11 @@ let getNb payload =
   PStr [h] ->  begin 
    match h.pstr_desc with
     Pstr_eval (e, a)  -> begin  match e.pexp_desc with 
-                         Pexp_constant (Const_int i) -> print_int i; i 
-                         |_ -> raise Not_found end 
-    |_ -> raise Not_found
-    end 
-  |_ -> raise Not_found
+                         Pexp_constant (Const_int i) -> i 
+                         |_ -> failwith"getNb failed" end 
+    |_ -> failwith "getNb failed"
+  end 
+  |_ -> failwith "getNb failed"
 
 let f args desc = 
  let seq  = ref false and nbSeq = ref 0 and taille = ref (-1) in
@@ -46,37 +46,63 @@ let rec handle_tuple tu bo =
                   begin match longident with
                         |Lident name -> 
                           (Grammar.Elem name)::(handle_tuple q bo) 
-                        | _ -> raise Not_found
+                        | _ -> failwith "handle_tuple failed"
                   end 
                   |_ -> handle_tuple q bo 
            end
 
-let handleConstr lo  b = 
+
+
+let rec aux name (a,b,c) arg l hash=
+ let grammar_element = 
+    match arg.ptyp_desc with
+     Ptyp_var n -> [] 
+     |Ptyp_tuple tu ->  handle_tuple tu b 
+     |Ptyp_constr ({txt = Lident s;_}, core_type_l) when s ="list" -> [] 
+     |Ptyp_constr (loc,li) -> replaceConstr (loc,li) (a,b,c) name l hash 
+     |_ -> failwith "makeRule failed"
+     in    
+     (name,[Grammar.Cons (a,grammar_element)])
+(*
+let makeConsManifest manifest = 
+ match manifest with
+  |Some e -> 
+  *) 
+and handleConstr l name hash manifest =
+ match manifest with 
+ |Some c_t -> let cple = f c_t.ptyp_attributes c_t.ptyp_desc in 
+               aux name cple c_t l hash                  
+ |_ -> failwith "handleConstre failed" 
+
+and  replaceConstr (loc, _) elt  name l hash = 
+ let nameConstr = 
+  match loc.txt with
+   |Lident s -> s
+   |_ -> failwith "replaceConstr failed"
+ in
+  let constr = List.find (fun e-> e.ptype_name.txt=nameConstr) l
+   in
+    Hashtbl.add hash nameConstr true; handleConstr l name hash constr.ptype_manifest 
+
 
 let rec makeSeqSup name c l = 
  match c with
   |0 -> ( Grammar.Seq name)::l
   |n -> makeSeqSup name (c-1) ((Grammar.Elem name)::l)
 
-let makeRule e l = 
+let makeRule e l hash= 
  let args = e.pcd_args in
-  let l = List.map (fun e -> f  e.ptyp_attributes e.ptyp_desc) args in
-   let (a,b,c) as elt = List.hd l and arg = List.hd args in
-   let grammar_element = 
-    match arg.ptyp_desc with
-     Ptyp_var n -> [] 
-     |Ptyp_tuple tu ->  handle_tuple tu b 
-     |Ptyp_constr (loc,core_type_l) -> handleConstr loc b l 
-     |_ -> failwith "makeRule failed"
-     in
-    
-     (e.pcd_name.txt,[Grammar.Cons (a,grammar_element)])
-   
+  let li = List.map (fun e -> f  e.ptyp_attributes e.ptyp_desc) args in
+   let (a,b,c) as elt = List.hd li and arg = List.hd args in
+     aux e.pcd_name.txt elt arg l hash
 
-let makeGrammar kind name manifest = 
+let makeGrammar l kind name manifest hash = 
  match kind with
-  |Ptype_variant l -> let g = (name, List.map (fun e-> Grammar.Call e.pcd_name.txt) l)::(List.map (fun e -> makeRule e l) l ) in let s = Grammar.string_of_grammar g in Printf.printf "Grammaire : \n%s \n" s 
- (* |Ptype_abstract -> handlemanifest*)
+  |Ptype_variant lv -> let g = (name, List.map (fun e-> Grammar.Call e.pcd_name.txt) lv)::
+                             (List.map (fun e -> makeRule e l hash) lv ) in g
+  |Ptype_abstract -> begin try 
+                        ignore(Hashtbl.find hash name); []
+                      with Not_found -> handleConstr l name hash manifest end 
   | _ -> failwith "makeGrammar failed"
 
 
@@ -107,9 +133,11 @@ let makeSpec argv =
        match li with 
        |[] -> type_desc
        |h::q -> if List.exists (fun (e,f) -> e.txt="spec") (h.ptype_attributes) then 
-                 begin 
-                  (*List.map (fun e -> makeGrammar e.ptype_kind e.ptype_name.txt) l; type_desc*) 
-                  makeGrammar (List.hd l).ptype_kind (List.hd l).ptype_name.txt (List.hd l).ptype_manifest; type_desc 
+                 begin
+                  let hash = Hashtbl.create (List.length l) in 
+                  let la = List.map (fun e -> makeGrammar l e.ptype_kind e.ptype_name.txt e.ptype_manifest hash) l
+                   in type_desc
+                (*  makeGrammar (List.hd l).ptype_kind (List.hd l).ptype_name.txt (List.hd l).ptype_manifest; type_desc*) 
                  end
                 else 
                  findSpec q
