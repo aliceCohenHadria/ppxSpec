@@ -140,56 +140,66 @@ let makeGrammar l kind name manifest hash =
  match kind with
   |Ptype_variant lv -> let g = (name, List.map (fun e-> Grammar.Call e.pcd_name.txt) lv)::
                              (List.map (fun e -> makeRule e l hash) lv ) in 
-                        let s = Grammar.string_of_grammar g in
-                         Printf.printf "%s \n" s;g
+                        g
   |Ptype_abstract -> begin try 
                         ignore(Hashtbl.find hash name); []
                       with Not_found -> [handleConstr l name hash manifest] end 
   | _ -> failwith "makeGrammar failed"
 
 
-let grammarToAst l name= 
- let grammar_name  = Exp.constant  (Const_string ("grammar"^name,None)) in 
- match l with
-  |[] -> []
-  |h::q -> []
+let elemToAst loc elem=
+let nameConstr, s =
+ match elem with
+  |Grammar.Seq t -> "Seq",t  
+  |Grammar.Elem t -> "Elem",t
+ in
+  Exp.construct {txt = Lident nameConstr; loc = loc} 
+                (Some (Exp.constant (Const_string (s,None))))
+
+let listVide loc = Exp.construct {txt = Lident "[]";loc=loc} None
+
+let listToAst l loc f =
+ let rec aux li = 
+  match li with 
+   |[] -> failwith "empty list"
+   |h::[] -> Exp.tuple [(f h); listVide loc]
+   |h::q -> Exp.tuple [(f h); Exp.construct {txt = Lident "::"; loc = loc} (Some (aux q))]
+ in
+  Exp.construct  {txt = Lident "::"; loc = loc } (Some (aux l))
+
+let componentToAst loc comp = 
+ match comp with
+ |Grammar.Call r ->    Exp.construct {txt = Lident "Call"; loc = loc} 
+                (Some (Exp.constant (Const_string (r,None))))
+ |Grammar.Cons (i,el) ->   Exp.construct {txt = Lident "Cons"; loc = loc} 
+                (Some (Exp.tuple [Exp.constant (Const_int i); listToAst el loc (elemToAst loc)]))
+  
+let ruleToAst loc (st,cl) = 
+ Exp.tuple [Exp.constant (Const_string (st,None)); listToAst cl loc (componentToAst loc)]
+
+let grammarToAst grammar name loc = 
+ let grammar_name  = Pat.var {txt = "grammar_"^name;loc = loc} in 
+  let grammar_ast = listToAst grammar loc (ruleToAst loc) in
+   let module_name = Pat.var {txt="Tools_"^name;loc=loc} in
+   [%stri module Tools = struct
+     let [%p grammar_name] = [%e grammar_ast]
+     let hello () = Printf.printf "hello\n" 
+     end]
 
 
-
-
-(*
-let f kind = 
-match kind with
-Ptype_variant l -> List.iter (fun e -> let s =  e.pcd_name.txt in Printf.printf "ici : %s\n" s) l
-|_ -> raise Not_found
-*)
-(*
-let makeModuleType name loc kind=
-f kind;  
-let ex = Exp.constant ~loc (Const_string (name,None)) in
-[%stri module Spec = struct
-let affiche () = Printf.printf "%s\n" [%e ex] 
-end]
-*)
-
-let makeSpec argv =                                                                           
-{ default_mapper with                                                                                
-  structure = fun mapper structure ->
-  let type_desc =  (List.hd structure) in  
-   match type_desc with                                                                                  
-    | {  pstr_desc =
-      Pstr_type l ; pstr_loc} -> 
+let rec aux type_desc default_mapper=
+   match type_desc with
+   | {  pstr_desc = Pstr_type l ; pstr_loc} -> 
       begin
       let rec findSpec li = 
        match li with 
-       |[] -> structure
+       |[] -> false,[] 
        |h::q -> if List.exists (fun (e,f) -> e.txt="spec") (h.ptype_attributes) then 
                  begin
                   let hash = Hashtbl.create (List.length l) in 
                   let la = List.map (fun e -> makeGrammar l e.ptype_kind e.ptype_name.txt e.ptype_manifest hash) l
                    in
-                   structure@(grammarToAst la "bintree") 
-                   (*  makeGrammar (List.hd l).ptype_kind (List.hd l).ptype_name.txt (List.hd l).ptype_manifest; type_desc*) 
+                    true,[grammarToAst (List.flatten la) (List.hd l).ptype_name.txt pstr_loc] 
                  end
                 else 
                  findSpec q
@@ -197,7 +207,23 @@ let makeSpec argv =
         findSpec l 
       end
           (* Delegate to the default mapper. *)                                                      
-    | x -> [default_mapper.structure_item mapper x];                                                       
+    | x -> false,[default_mapper.structure_item default_mapper x]
+
+
+ let rec traversListStruct str mapper= 
+      match str with
+       |[] -> []
+       |h::q-> let b,nl = aux h mapper in
+               if b then 
+                h::(nl@(traversListStruct q mapper))
+               else 
+                h::(traversListStruct q mapper) 
+
+     
+let makeSpec argv =                                                                           
+{ default_mapper with                                                                                
+  structure = fun mapper structure ->
+     traversListStruct structure mapper                                                     
 }                                                                                                    
 
 let () = register "ppxSpec" makeSpec

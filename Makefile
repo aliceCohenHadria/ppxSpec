@@ -1,6 +1,6 @@
 all: 
 	ocamlbuild -use-ocamlfind  ppxSpec.native
-	ocamlc -o test -ppx ./ppxSpec.native testSpecPar.ml
+	ocamlbuild -use-ocamlfind -cflags '-ppx ./ppxSpec.native' testSpecPar.native
 clean:
 	-ocamlbuild -clean
 	-rm -rf *.cm* test
