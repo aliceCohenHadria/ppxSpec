@@ -7,6 +7,5 @@ and 'a parproc = ('a * 'a proc list [@seq])[@z]
 and 'a sumproc = 'a parproc list [@z][@seq 2]
 [@@spec]
 
-let _ = let s = string_of_grammar Tools.grammar_proc in Printf.printf "%s\n" s
-
+let _ = Tools.gen ()
 

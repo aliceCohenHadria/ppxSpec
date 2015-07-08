@@ -1,1 +1,4 @@
-let a = ("bonjour", 3)
+module Test = struct
+let l = []
+let f x = 2
+end
